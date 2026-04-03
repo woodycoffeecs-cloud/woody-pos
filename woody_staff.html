@@ -265,9 +265,7 @@ async function fbGet(col,id){try{const s=await getDB().collection(col).doc(id).g
 async function fbSet(col,id,data){await getDB().collection(col).doc(id).set(data);}
 async function fbQuery(col,filters=[]){let q=getDB().collection(col);filters.forEach(f=>q=q.where(f.f,'==',f.v));const s=await q.get();return s.docs.map(d=>d.data());}
 async function fbDel(col,id){await getDB().collection(col).doc(id).delete();}
-function fbWatch(col,id,cb){getDB().collection(col).doc(id).onSnapshot(s=>cb(s.exists?s.data():null));}}catch(e){}};
-  run();return setInterval(run,4000);
-}
+function fbWatch(col,id,cb){getDB().collection(col).doc(id).onSnapshot(s=>cb(s.exists?s.data():null));}
 
 
 const DM=[{id:1,name:'Americano',cat:'COFFEE',pm:20,pl:20,cm:8,cl:8},{id:2,name:'Nâu Woody',cat:'COFFEE',pm:20,pl:23,cm:8,cl:9},{id:3,name:'Cappuccino',cat:'COFFEE',pm:25,pl:30,cm:10,cl:12},{id:4,name:'Latte',cat:'COFFEE',pm:25,pl:30,cm:10,cl:12},{id:5,name:'Asian Latte',cat:'COFFEE',pm:27,pl:32,cm:11,cl:13},{id:6,name:'Caramel Machiato',cat:'COFFEE',pm:27,pl:32,cm:12,cl:14},{id:7,name:'Matcha Latte',cat:'MATCHA',pm:25,pl:30,cm:11,cl:13},{id:8,name:'Matcha Cold Whisk',cat:'MATCHA',pm:30,pl:35,cm:13,cl:15},{id:9,name:'Cam Vắt',cat:'JUICE',pm:15,pl:23,cm:6,cl:10},{id:10,name:'Chanh Muối',cat:'JUICE',pm:15,pl:20,cm:5,cl:8},{id:11,name:'Trà Sữa',cat:'MILK TEA',pm:23,pl:27,cm:9,cl:11},{id:12,name:'Trà Tắc',cat:'TEAVANA',pm:10,pl:15,cm:4,cl:6},{id:13,name:'Trà Đào',cat:'TEAVANA',pm:25,pl:30,cm:10,cl:12}];
