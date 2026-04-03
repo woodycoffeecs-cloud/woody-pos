@@ -376,68 +376,76 @@ select.psel.on{border-color:var(--rd);background:var(--rl);color:var(--rd);}
 </div>
 <div id="pra"></div>
 <div class="tc" id="tc"></div>
-<script>
+<script type="module">
 
-const FB_PROJECT='woody-pos';
-const FBB=`https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
-function toObj(fields){
-  if(!fields)return null;const o={};
-  for(const[k,v]of Object.entries(fields)){
-    if(v.stringValue!==undefined)o[k]=v.stringValue;
-    else if(v.integerValue!==undefined)o[k]=Number(v.integerValue);
-    else if(v.doubleValue!==undefined)o[k]=v.doubleValue;
-    else if(v.booleanValue!==undefined)o[k]=v.booleanValue;
-    else if(v.nullValue!==undefined)o[k]=null;
-    else if(v.arrayValue!==undefined)o[k]=(v.arrayValue.values||[]).map(x=>toObj({_:x})._);
-    else if(v.mapValue!==undefined)o[k]=toObj(v.mapValue.fields||{});
-    else o[k]=null;
+// ══ FIREBASE SDK (chạy trên https://) ══
+const FB_CFG = {
+  apiKey: "AIzaSyDLS4v2YWhAlBWxO2R0XcpbLipFgtDMhZQ",
+  authDomain: "woody-pos.firebaseapp.com",
+  projectId: "woody-pos",
+  storageBucket: "woody-pos.firebasestorage.app",
+  messagingSenderId: "299755321152",
+  appId: "1:299755321152:web:7c1498b5fa8ca2e608eca5",
+};
+
+let _db = null;
+let _firebase = null;
+
+async function initSDK() {
+  if (_db) return _db;
+  // Load Firebase SDK từ CDN
+  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
+  const {
+    getFirestore, doc, collection, setDoc, getDoc,
+    onSnapshot, getDocs, query, where, deleteDoc, writeBatch
+  } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
+
+  const app = initializeApp(FB_CFG);
+  _db = getFirestore(app);
+  _firebase = { doc, collection, setDoc, getDoc, onSnapshot, getDocs, query, where, deleteDoc, writeBatch };
+  return _db;
+}
+
+async function fbGet(col, id) {
+  const db = await initSDK();
+  const { doc, getDoc } = _firebase;
+  const snap = await getDoc(doc(db, col, id));
+  return snap.exists() ? snap.data() : null;
+}
+
+async function fbSet(col, id, data) {
+  const db = await initSDK();
+  const { doc, setDoc } = _firebase;
+  await setDoc(doc(db, col, id), data);
+}
+
+async function fbQuery(col, filters = []) {
+  const db = await initSDK();
+  const { collection, query, where, getDocs } = _firebase;
+  let q = collection(db, col);
+  if (filters.length > 0) {
+    q = query(q, ...filters.map(f => where(f.f, '==', f.v)));
   }
-  return o;
+  const snap = await getDocs(q);
+  return snap.docs.map(d => d.data());
 }
-function toFs(obj){
-  const f={};
-  for(const[k,v]of Object.entries(obj)){
-    if(v===null||v===undefined)f[k]={nullValue:null};
-    else if(typeof v==='boolean')f[k]={booleanValue:v};
-    else if(typeof v==='number')f[k]=Number.isInteger(v)?{integerValue:String(v)}:{doubleValue:v};
-    else if(typeof v==='string')f[k]={stringValue:v};
-    else if(Array.isArray(v))f[k]={arrayValue:{values:v.map(x=>toFs({_:x})._)}};
-    else if(typeof v==='object')f[k]={mapValue:{fields:toFs(v)}};
-    else f[k]={stringValue:String(v)};
-  }
-  return f;
+
+async function fbDel(col, id) {
+  const db = await initSDK();
+  const { doc, deleteDoc } = _firebase;
+  await deleteDoc(doc(db, col, id));
 }
-async function fbGet(col,id){
-  try{
-    const r=await fetch(`${FBB}/${col}/${id}`);
-    if(r.status===404)return null;
-    if(!r.ok){const t=await r.text();throw new Error(`${r.status}: ${t}`);}
-    const d=await r.json();
-    return d.fields?toObj(d.fields):null;
-  }catch(e){console.error('fbGet',col,id,e);return null;}
-}
-async function fbSet(col,id,data){
-  const r=await fetch(`${FBB}/${col}/${id}`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:toFs(data)})});
-  if(!r.ok){const t=await r.text();throw new Error(`fbSet ${r.status}: ${t}`);}
-}
-async function fbQuery(col,filters=[]){
-  let sq={from:[{collectionId:col}]};
-  if(filters.length===1){
-    sq.where={fieldFilter:{field:{fieldPath:filters[0].f},op:'EQUAL',value:toFs({_:filters[0].v})._}};
-  } else if(filters.length>1){
-    sq.where={compositeFilter:{op:'AND',filters:filters.map(f=>({fieldFilter:{field:{fieldPath:f.f},op:'EQUAL',value:toFs({_:f.v})._}}))}};
-  }
-  const r=await fetch(`${FBB.replace('/documents','/:runQuery')}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({structuredQuery:sq})});
-  if(!r.ok){const t=await r.text();throw new Error(`fbQuery ${r.status}: ${t}`);}
-  const rows=await r.json();
-  return rows.filter(row=>row.document).map(row=>toObj(row.document.fields||{}));
-}
-async function fbDel(col,id){
-  await fetch(`${FBB}/${col}/${id}`,{method:'DELETE'});
-}
-function fbWatch(col,id,cb){
-  let last=null;
-  const run=async()=>{try{const d=await fbGet(col,id);const s=JSON.stringify(d);if(s!==last){last=s;cb(d);}}catch(e){}};
+
+function fbWatch(col, id, cb) {
+  // Start watching after SDK loads
+  initSDK().then(db => {
+    const { doc, onSnapshot } = _firebase;
+    onSnapshot(doc(db, col, id), snap => {
+      cb(snap.exists() ? snap.data() : null);
+    });
+  });
+  return () => {}; // cleanup noop
+}}catch(e){}};
   run();return setInterval(run,4000);
 }
 
