@@ -161,6 +161,8 @@ select.psel.on{border-color:var(--rd);background:var(--rl);color:var(--rd);}
 @media print{body>*:not(#pra){display:none!important;}#pra{display:block!important;}@page{margin:0;size:80mm auto;}}
 #pra{display:none;}
 </style>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
 </head>
 <body>
 <div id="ls">
@@ -253,76 +255,17 @@ select.psel.on{border-color:var(--rd);background:var(--rl);color:var(--rd);}
 </div>
 <div id="pra"></div>
 <div class="tc" id="tc"></div>
-<script type="module">
+<script>
 
-// ══ FIREBASE SDK (chạy trên https://) ══
-const FB_CFG = {
-  apiKey: "AIzaSyDLS4v2YWhAlBWxO2R0XcpbLipFgtDMhZQ",
-  authDomain: "woody-pos.firebaseapp.com",
-  projectId: "woody-pos",
-  storageBucket: "woody-pos.firebasestorage.app",
-  messagingSenderId: "299755321152",
-  appId: "1:299755321152:web:7c1498b5fa8ca2e608eca5",
-};
-
-let _db = null;
-let _firebase = null;
-
-async function initSDK() {
-  if (_db) return _db;
-  // Load Firebase SDK từ CDN
-  const { initializeApp } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js');
-  const {
-    getFirestore, doc, collection, setDoc, getDoc,
-    onSnapshot, getDocs, query, where, deleteDoc, writeBatch
-  } = await import('https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js');
-
-  const app = initializeApp(FB_CFG);
-  _db = getFirestore(app);
-  _firebase = { doc, collection, setDoc, getDoc, onSnapshot, getDocs, query, where, deleteDoc, writeBatch };
-  return _db;
-}
-
-async function fbGet(col, id) {
-  const db = await initSDK();
-  const { doc, getDoc } = _firebase;
-  const snap = await getDoc(doc(db, col, id));
-  return snap.exists() ? snap.data() : null;
-}
-
-async function fbSet(col, id, data) {
-  const db = await initSDK();
-  const { doc, setDoc } = _firebase;
-  await setDoc(doc(db, col, id), data);
-}
-
-async function fbQuery(col, filters = []) {
-  const db = await initSDK();
-  const { collection, query, where, getDocs } = _firebase;
-  let q = collection(db, col);
-  if (filters.length > 0) {
-    q = query(q, ...filters.map(f => where(f.f, '==', f.v)));
-  }
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data());
-}
-
-async function fbDel(col, id) {
-  const db = await initSDK();
-  const { doc, deleteDoc } = _firebase;
-  await deleteDoc(doc(db, col, id));
-}
-
-function fbWatch(col, id, cb) {
-  // Start watching after SDK loads
-  initSDK().then(db => {
-    const { doc, onSnapshot } = _firebase;
-    onSnapshot(doc(db, col, id), snap => {
-      cb(snap.exists() ? snap.data() : null);
-    });
-  });
-  return () => {}; // cleanup noop
-}}catch(e){}};
+// ══ FIREBASE — dùng compat SDK load qua script tag ══
+const FB_CFG={apiKey:"AIzaSyDLS4v2YWhAlBWxO2R0XcpbLipFgtDMhZQ",authDomain:"woody-pos.firebaseapp.com",projectId:"woody-pos",storageBucket:"woody-pos.firebasestorage.app",messagingSenderId:"299755321152",appId:"1:299755321152:web:7c1498b5fa8ca2e608eca5"};
+let _db=null;
+function getDB(){if(!_db){firebase.initializeApp(FB_CFG);_db=firebase.firestore();}return _db;}
+async function fbGet(col,id){try{const s=await getDB().collection(col).doc(id).get();return s.exists?s.data():null;}catch(e){console.error('fbGet',e);return null;}}
+async function fbSet(col,id,data){await getDB().collection(col).doc(id).set(data);}
+async function fbQuery(col,filters=[]){let q=getDB().collection(col);filters.forEach(f=>q=q.where(f.f,'==',f.v));const s=await q.get();return s.docs.map(d=>d.data());}
+async function fbDel(col,id){await getDB().collection(col).doc(id).delete();}
+function fbWatch(col,id,cb){getDB().collection(col).doc(id).onSnapshot(s=>cb(s.exists?s.data():null));}}catch(e){}};
   run();return setInterval(run,4000);
 }
 
