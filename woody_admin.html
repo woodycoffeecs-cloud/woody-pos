@@ -248,10 +248,11 @@ select.psel.on{border-color:var(--rd);background:var(--rl);color:var(--rd);}
     <div class="pg" id="pg-orders">
       <div class="st">📜 Danh sách đơn</div>
       <div class="otb">
-        <input type="date" id="fd" onchange="loadOrders()"/>
+        <input type="date" id="fd" onchange="setOrdMode('day');loadOrders()"/>
+        <input type="month" id="fm" onchange="setOrdMode('month');loadOrdersMonth()" style="padding:8px 12px;border:2px solid var(--gl2);border-radius:10px;font-family:'DM Sans',sans-serif;font-size:13px;outline:none;background:var(--w)"/>
         <select id="fs" onchange="filterOrders()"><option value="">Tất cả ca</option><option value="1">Ca 1</option><option value="2">Ca 2</option></select>
         <input id="fq" placeholder="Tìm khách..." oninput="filterOrders()" style="flex:1"/>
-        <button class="btn bg sm" onclick="exportCSV()">📥 CSV</button>
+        <button class="btn bg sm" onclick="exportCSV()">📥 Xuất CSV</button>
       </div>
       <div style="overflow-x:auto"><table class="ot"><thead><tr><th>#</th><th>Giờ</th><th>Khách</th><th>Ca</th><th>Món</th><th>Tạm tính</th><th>KM</th><th>Tổng</th><th>Cost</th><th>LN</th><th>TT</th><th></th></tr></thead><tbody id="otb"></tbody></table></div>
     </div>
@@ -260,11 +261,21 @@ select.psel.on{border-color:var(--rd);background:var(--rl);color:var(--rd);}
     <div class="pg" id="pg-report">
       <div class="st">📊 Báo cáo</div>
       <div style="display:flex;gap:10px;align-items:center;margin-bottom:20px;flex-wrap:wrap">
-        <input type="date" id="rd" onchange="renderReport()" style="padding:9px 12px;border:2px solid var(--gl2);border-radius:10px;outline:none;font-family:'DM Sans',sans-serif;background:var(--w)"/>
-        <button class="btn bs sm" onclick="$('rd').value=today();renderReport()">Hôm nay</button>
-        <button class="btn bg sm" onclick="exportReport()">📥 Xuất</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:var(--gy)">📅 Theo ngày:</span>
+          <input type="date" id="rd" onchange="renderReport()" style="padding:9px 12px;border:2px solid var(--gl2);border-radius:10px;outline:none;font-family:'DM Sans',sans-serif;background:var(--w)"/>
+          <button class="btn bs sm" onclick="$('rd').value=today();renderReport()">Hôm nay</button>
+          <button class="btn bg sm" onclick="exportReportDay()">📥 Xuất ngày</button>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--gl2);width:100%">
+          <span style="font-size:12px;font-weight:700;color:var(--gy)">📆 Theo tháng:</span>
+          <input type="month" id="rm" style="padding:9px 12px;border:2px solid var(--gl2);border-radius:10px;outline:none;font-family:'DM Sans',sans-serif;background:var(--w)"/>
+          <button class="btn bs sm" onclick="renderReportMonth()">Xem tháng</button>
+          <button class="btn bg sm" onclick="exportReportMonth()">📥 Xuất tháng</button>
+        </div>
       </div>
       <div class="sg" id="sg"></div>
+      <div id="month-report" style="display:none"></div>
       <div id="shift-reports"></div>
     </div>
 
@@ -480,7 +491,7 @@ function logout(){$('ls').style.display='flex';$('app').style.display='none';S.c
 
 function initApp(){
   goTo('order');buildPills();buildMenu();buildPromoSel();syncQRBtns();
-  $('fd').value=today();$('rd').value=today();
+  $('fd').value=today();$('rd').value=today();$('rm').value=today().slice(0,7);$('fm').value=today().slice(0,7);
   // Không set inv-month mặc định → hiện tất cả hóa đơn
   const id=$('inv-date');if(id)id.value=today();
   loadOrders();renderReport();
@@ -600,6 +611,20 @@ function printBill(ord){
 }
 
 // ORDERS
+let ordMode='day';
+function setOrdMode(m){
+  ordMode=m;
+  if(m==='day'){$('fd').style.borderColor='var(--gn)';$('fm').style.borderColor='var(--gl2)';}
+  else{$('fm').style.borderColor='var(--gn)';$('fd').style.borderColor='var(--gl2)';}
+}
+async function loadOrdersMonth(){
+  const ym=$('fm').value;if(!ym)return;
+  try{
+    const rows=await fbQuery('orders',[{f:'yearMonth',v:ym}]);
+    S.orders=rows;filterOrders();
+    toast(ym+': '+rows.length+' đơn','gld');setSynced(true);
+  }catch(e){toast('Lỗi: '+e.message,'err');setSynced(false);}
+}
 async function loadOrders(){
   const df=$('fd').value||today();
   try{const rows=await fbQuery('orders',[{f:'date',v:df}]);S.orders=rows;filterOrders();setSynced(true);}
@@ -618,9 +643,18 @@ function rePrint(id){const o=S.orders.find(x=>x.id===id);if(o)printBill(o);}
 async function delOrd(id){if(!confirm('Xoá đơn này?'))return;await fbDel('orders',id);S.orders=S.orders.filter(o=>o.id!==id);filterOrders();toast('Đã xoá','err');}
 function exportCSV(){
   const ords=S.orders;
-  const rows=[['ID','Ngày','Giờ','Ca','Khách','Tạm tính','KM','Tổng','Cost','LN']];
-  ords.forEach(o=>rows.push([o.id,o.date,o.time,o.shift===1?'Ca 1':o.shift===2?'Ca 2':'Ngoài',o.customer,o.sub,o.disc||0,o.total,o.totalCost||0,(o.total||0)-(o.totalCost||0)]));
-  dlCSV(rows,'woody_orders_'+($('fd').value||today())+'.csv');toast('Đã xuất CSV!','gld');
+  if(!ords.length){toast('Không có dữ liệu!','err');return;}
+  const label=ordMode==='month'?($('fm').value||today().slice(0,7)):($('fd').value||today());
+  const rows=[['ID','Ngày','Giờ','Ca','Khách','Món','Tạm tính (đ)','KM (đ)','Tổng (đ)','Cost (đ)','LN (đ)','TT']];
+  ords.forEach(o=>rows.push([
+    o.id,o.date,o.time,o.shift===1?'Ca 1':o.shift===2?'Ca 2':'Ngoài',o.customer,
+    (o.items||[]).map(i=>i.name+'('+i.size+')').join('|'),
+    Math.round(o.sub*1000),Math.round((o.disc||0)*1000),Math.round(o.total*1000),
+    Math.round((o.totalCost||0)*1000),Math.round(((o.total||0)-(o.totalCost||0))*1000),
+    o.payStatus==='unpaid'?'Chưa TT':'Đã TT'
+  ]));
+  const suffix=ordMode==='month'?'thang_':'ngay_';
+  dlCSV(rows,'woody_orders_'+suffix+label+'.csv');toast('Đã xuất CSV!','gld');
 }
 
 // REPORT
@@ -638,11 +672,81 @@ async function renderReport(){
     }).join('');
   }catch(e){toast('Lỗi báo cáo: '+e.message,'err');}
 }
-async function exportReport(){
+async function exportReportDay(){
   const date=$('rd').value||today();
   const ords=await fbQuery('orders',[{f:'date',v:date}]);
-  const rows=[['BÁO CÁO NGÀY:',date],[],['ID','Giờ','Khách','Ca','Tổng','Cost','LN'],...ords.map(o=>[o.id,o.time,o.customer,o.shift===1?'Ca 1':o.shift===2?'Ca 2':'Ngoài',o.total,o.totalCost||0,(o.total||0)-(o.totalCost||0)])];
-  dlCSV(rows,'woody_report_'+date+'.csv');toast('Đã xuất!','gld');
+  if(!ords.length){toast('Không có đơn nào!','err');return;}
+  const rev=ords.reduce((s,o)=>s+o.total,0),cost=ords.reduce((s,o)=>s+(o.totalCost||0),0),disc=ords.reduce((s,o)=>s+(o.disc||0),0);
+  const rows=[
+    ['BÁO CÁO NGÀY:',date],['Doanh thu:',rev*1000],['Chi phí:',cost*1000],['Lợi nhuận:',((rev-cost)*1000)],['Số đơn:',ords.length],[],
+    ['ID','Giờ','Ca','Khách','Món','Tạm tính','KM','Tổng','Cost','LN','TT'],
+    ...ords.map(o=>[o.id,o.time,o.shift===1?'Ca 1':o.shift===2?'Ca 2':'Ngoài',o.customer,
+      (o.items||[]).map(i=>i.name+'('+i.size+')').join('|'),
+      Math.round(o.sub*1000),Math.round((o.disc||0)*1000),Math.round(o.total*1000),
+      Math.round((o.totalCost||0)*1000),Math.round(((o.total||0)-(o.totalCost||0))*1000),
+      o.payStatus==='unpaid'?'Chưa TT':'Đã TT'
+    ])
+  ];
+  dlCSV(rows,'woody_bao-cao-ngay_'+date+'.csv');toast('Đã xuất báo cáo ngày!','gld');
+}
+
+async function exportReportMonth(){
+  const ym=$('rm').value;
+  if(!ym){toast('Chọn tháng cần xuất!','err');return;}
+  toast('Đang tải dữ liệu...','');
+  const ords=await fbQuery('orders',[{f:'yearMonth',v:ym}]);
+  if(!ords.length){toast('Không có đơn nào trong tháng này!','err');return;}
+  const rev=ords.reduce((s,o)=>s+o.total,0),cost=ords.reduce((s,o)=>s+(o.totalCost||0),0),disc=ords.reduce((s,o)=>s+(o.disc||0),0);
+  const ca1=ords.filter(o=>o.shift===1),ca2=ords.filter(o=>o.shift===2);
+  const rows=[
+    ['BÁO CÁO THÁNG:',ym],[],
+    ['TỔNG QUAN',''],
+    ['Doanh thu tháng (đ):',Math.round(rev*1000)],
+    ['Chi phí tháng (đ):',Math.round(cost*1000)],
+    ['Lợi nhuận tháng (đ):',Math.round((rev-cost)*1000)],
+    ['Margin:',rev?Math.round((rev-cost)/rev*100)+'%':'0%'],
+    ['Tổng số đơn:',ords.length],
+    ['KM đã giảm (đ):',Math.round(disc*1000)],
+    ['Đơn chưa TT:',ords.filter(o=>o.payStatus==='unpaid').length],
+    [],
+    ['THEO CA','Số đơn','Doanh thu (đ)','Chi phí (đ)','Lợi nhuận (đ)'],
+    ['Ca 1 (8h-13h)',ca1.length,Math.round(ca1.reduce((s,o)=>s+o.total,0)*1000),Math.round(ca1.reduce((s,o)=>s+(o.totalCost||0),0)*1000),Math.round((ca1.reduce((s,o)=>s+o.total,0)-ca1.reduce((s,o)=>s+(o.totalCost||0),0))*1000)],
+    ['Ca 2 (13h-18h)',ca2.length,Math.round(ca2.reduce((s,o)=>s+o.total,0)*1000),Math.round(ca2.reduce((s,o)=>s+(o.totalCost||0),0)*1000),Math.round((ca2.reduce((s,o)=>s+o.total,0)-ca2.reduce((s,o)=>s+(o.totalCost||0),0))*1000)],
+    [],
+    ['DANH SÁCH ĐƠN','','','','','','','','','',''],
+    ['ID','Ngày','Giờ','Ca','Khách','Món','Tạm tính','KM','Tổng','Cost','LN','TT'],
+    ...ords.sort((a,b)=>a.ts-b.ts).map(o=>[
+      o.id,o.date,o.time,o.shift===1?'Ca 1':o.shift===2?'Ca 2':'Ngoài ca',o.customer,
+      (o.items||[]).map(i=>i.name+'('+i.size+')').join('|'),
+      Math.round(o.sub*1000),Math.round((o.disc||0)*1000),Math.round(o.total*1000),
+      Math.round((o.totalCost||0)*1000),Math.round(((o.total||0)-(o.totalCost||0))*1000),
+      o.payStatus==='unpaid'?'Chưa TT':'Đã TT'
+    ])
+  ];
+  dlCSV(rows,'woody_bao-cao-thang_'+ym+'.csv');toast('Đã xuất báo cáo tháng '+ym+'!','gld');
+}
+
+async function renderReportMonth(){
+  const ym=$('rm').value;
+  if(!ym){toast('Chọn tháng!','err');return;}
+  toast('Đang tải...','');
+  const ords=await fbQuery('orders',[{f:'yearMonth',v:ym}]);
+  const rev=ords.reduce((s,o)=>s+o.total,0),cost=ords.reduce((s,o)=>s+(o.totalCost||0),0),disc=ords.reduce((s,o)=>s+(o.disc||0),0);
+  const mr=document.getElementById('month-report');
+  if(!mr)return;
+  mr.style.display='';
+  mr.innerHTML=`<div style="background:var(--green);color:var(--cream);border-radius:14px;padding:16px 20px;margin-bottom:16px;">
+    <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px;margin-bottom:12px">📆 Tổng kết tháng ${ym}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px">
+      <div><div style="font-size:11px;opacity:.8">Doanh thu</div><div style="font-size:20px;font-weight:800">${fmt(rev)}</div></div>
+      <div><div style="font-size:11px;opacity:.8">Chi phí</div><div style="font-size:20px;font-weight:800;color:#ffcccc">${fmt(cost)}</div></div>
+      <div><div style="font-size:11px;opacity:.8">Lợi nhuận</div><div style="font-size:20px;font-weight:800;color:#C8A84B">${fmt(rev-cost)}</div></div>
+      <div><div style="font-size:11px;opacity:.8">Số đơn</div><div style="font-size:20px;font-weight:800">${ords.length}</div></div>
+      <div><div style="font-size:11px;opacity:.8">KM đã giảm</div><div style="font-size:18px;font-weight:800;color:#ffaaaa">−${fmt(disc)}</div></div>
+      <div><div style="font-size:11px;opacity:.8">Chưa TT</div><div style="font-size:18px;font-weight:800;color:#ffaaaa">${ords.filter(o=>o.payStatus==='unpaid').length} đơn</div></div>
+    </div>
+  </div>`;
+  toast('Tháng '+ym+': '+ords.length+' đơn','gld');
 }
 
 // RECIPE (editable)
